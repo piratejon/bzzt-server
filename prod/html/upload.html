@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>bzzt</title>
+  </head>
+  <body>
+    <form action="/submit" method="post" enctype="multipart/form-data">
+      <ul style="list-style-type: none;">
+        <li>GPS: <input type="file" name="gps" />
+        <li>Accel: <input type="file" name="accel" />
+        <li><input type="submit">
+      </ul>
+    </form> 
+    <form action="/submit" method="post">
+      <ul style="list-style-type: none;">
+        <li>Message: <input type="text" name="message" />
+        <li>Latitude: <input type="text" name="latitude" />
+        <li>Longitude: <input type="text" name="longitude" />
+        <li><input type="submit">
+      </ul>
+    </form> 
+    <form action="/submit" method="get">
+      <ul style="list-style-type: none;">
+        <li>x0: <input type="text" name="x0" />
+        <li>y0: <input type="text" name="y0" />
+        <li>x1: <input type="text" name="x1" />
+        <li>y1: <input type="text" name="y1" />
+        <li><input type="submit">
+      </ul>
+    </form> 
+  </body>
+</html>

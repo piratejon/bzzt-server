@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>bzzt!</title>
+    <meta charset="utf-8">
+    <style type="text/css">
+      html, body, #map-canvas { height: 100%; margin: 0; padding: 0;}
+    </style>
+    <script type="text/javascript" src="https://maps.googleapis.com/maps/api/js?key=AIzaSyDn2ELjyu5w6yjfhqfDd7Ww7V8D6BS6MUo"></script>
+    <script type="text/javascript">
+      var map, xhr, notices, segments;
+
+      function initialize() {
+        var mapOptions = {
+          mapTypeId: google.maps.MapTypeId.SATELLITE,
+          center: { lat: 35.456, lng: -97.573 },
+          zoom: 19
+        };
+
+        notices = [];
+        segments = {}; // keyed by series_id
+        map = new google.maps.Map(document.getElementById('map-canvas'), mapOptions);
+        map.setTilt(0);
+        google.maps.event.addListener(map, 'dragend', dragend);
+        google.maps.event.addListenerOnce(map, 'idle', dragend);
+        xhr = new XMLHttpRequest();
+
+        startNoticeQuery();
+      }
+
+      function build_param_string(params) {
+        var query_string = "";
+        for(var key in params) {
+          if (params.hasOwnProperty(key)) {
+            query_string += key + "=" + params[key] + "&"
+          }
+        }
+        return query_string;
+      }
+
+      function remove_current_notices(n) {
+        var c;
+        while (c = n.pop()) {
+          google.maps.event.removeListener(c['listener']);
+          c['circle'].setMap(null);
+        }
+      }
+
+      function remove_segment_lines(seg) {
+        var l, i;
+        l = seg.length;
+        for (i = 0; i < l; i += 1) {
+          if (seg[i].hasOwnProperty('polyline')) {
+            seg[i]['polyline'].setMap(null);
+          }
+        }
+      }
+
+      function remove_current_segments(segs) {
+        for(var s in segs) {
+          if (segs.hasOwnProperty(s)) {
+            remove_segment_lines(segs[s]);
+          }
+        }
+      }
+
+      function make_notice(lat, lng, msg) {
+        new_notice = {};
+        new_notice['lat'] = parseFloat(lat);
+        new_notice['lng'] = parseFloat(lng);
+        new_notice['msg'] = msg;
+        new_notice['circle'] = new google.maps.Circle({
+            strokeColor: '#000000',
+            strokeOpacity: 1.0,
+            strokeWeight: 5,
+            fillColor: '#ff0000',
+            fillOpacity: 1.0,
+            map: map,
+            center: new google.maps.LatLng(new_notice['lat'], new_notice['lng']),
+            radius: 5.0
+            });
+        new_notice['listener'] = google.maps.event.addListener(new_notice['circle'], 'click', function(ev) {
+            alert(msg);
+            });
+        return new_notice;
+      }
+
+      function make_line(series_id, sequence_id, lat, lng, z) {
+        new_line = {};
+        new_line['series'] = series_id;
+        new_line['sequence'] = parseInt(sequence_id);
+        new_line['lat'] = parseFloat(lat);
+        new_line['lng'] = parseFloat(lng);
+        new_line['z'] = parseFloat(z);
+
+        return new_line;
+      }
+
+      function refreshNotices(txt) {
+        // lines are lat,lng,msg
+        var lines, l, line, obj;
+        lines = txt.split('\n');
+        l = lines.length;
+
+        remove_current_notices(notices);
+
+        for (var i = 0; i < l; i += 1) {
+          if (lines[i].length > 0) {
+            line = lines[i].split(',');
+            notices.push(make_notice(line[0], line[1], line[2]));
+          }
+        }
+
+        startPointsQuery(map.getBounds());
+      }
+
+      function drawSegments(segs) {
+        for (var seg in segs) {
+          if (segs.hasOwnProperty(seg)) {
+            var sorted_seg = segs[seg]['lines'].sort(function (a,b) {
+                return a['sequence_id'] - b['sequence_id'];
+                });
+            var l = sorted_seg.length;
+
+            for (i = 1; i < l; i += 1) {
+              if (sorted_seg[i]['sequence'] == sorted_seg[i-1]['sequence'] + 1) {
+                // line between i-1 and i, in i's color
+                var color;
+                if (Math.abs(sorted_seg[i]['z']) <= 1.0) color = '#00ff00';
+                else if (Math.abs(sorted_seg[i]['z'])  <= 2.0) color = '#ffff00';
+                else color = '#ff0000';
+                sorted_seg[i]['polyline'] = new google.maps.Polyline({
+                    path: [
+                      new google.maps.LatLng(sorted_seg[i-1]['lat'], sorted_seg[i-1]['lng']),
+                      new google.maps.LatLng(sorted_seg[ i ]['lat'], sorted_seg[ i ]['lng'])
+                    ],
+                    strokeColor: color,
+                    strokeOpacity: 1.0,
+                    strokeWeight: 5
+                    });
+                sorted_seg[i]['polyline'].setMap(map);
+              }
+            }
+          }
+        }
+      }
+
+      function refreshPoints(txt) {
+        // lines are series_id, sequence_id, lat, lng, z-score
+        var lines, l, line, obj;
+        lines = txt.split('\n');
+        l = lines.length;
+
+        remove_current_segments(segments);
+
+        for (var i = 0; i < l; i += 1) {
+          if (lines[i].length > 0) {
+            line = lines[i].split(',');
+            new_line = make_line(line[0], line[1], line[2], line[3], line[4]);
+            if (!segments.hasOwnProperty(new_line['series'])) {
+              segments[new_line['series']] = {
+                  lines: []
+              };
+            }
+            segments[new_line['series']]['lines'].push(new_line);
+          }
+        }
+
+        drawSegments(segments);
+      }
+
+      function sendAjax(url, param_obj, responseFunction) {
+        var uri = encodeURI(url + '?' + build_param_string(param_obj));
+        if (xhr.readyState == 4 || xhr.readyState == 0) {
+          xhr.open("GET", uri, true);
+          xhr.onreadystatechange = function() {
+            if (xhr.readyState == 4 && xhr.status == 200) {
+              responseFunction(xhr.responseText);
+            }
+          };
+          xhr.send(null);
+        }
+      }
+
+      function buildBoundsObject(bounds) {
+        var obj = {};
+        obj['x0'] = bounds.getSouthWest().lat();
+        obj['y0'] = bounds.getSouthWest().lng();
+        obj['x1'] = bounds.getNorthEast().lat();
+        obj['y1'] = bounds.getNorthEast().lng();
+        return obj;
+      }
+
+      function startNoticeQuery(bounds) {
+        var bounds_obj = buildBoundsObject(bounds);
+        bounds_obj['want'] = 'notices';
+        sendAjax('/submit', bounds_obj, refreshNotices);
+      }
+
+      function startPointsQuery(bounds) {
+        var bounds_obj = buildBoundsObject(bounds);
+        bounds_obj['want'] = 'points';
+        sendAjax('/submit', bounds_obj, refreshPoints);
+      }
+
+      function dragend() {
+        var bounds = map.getBounds();
+        
+        startNoticeQuery(bounds);
+      }
+
+      google.maps.event.addDomListener(window, 'load', initialize);
+    </script>
+  </head>
+  <body>
+    <div id="map-canvas"></div>
+  </body>
+</html>
+
