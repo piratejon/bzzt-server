@@ -1,0 +1,1 @@
+uwsgi --uwsgi-socket /tmp/socket --wsgi-file submit.py --post-buffering 1
